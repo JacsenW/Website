@@ -1,0 +1,427 @@
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash
+from datetime import datetime
+import re
+import logging 
+import os 
+
+app = Flask(__name__)
+# Load common passwords 
+with open(r"C:\Users\jacse\OneDrive\Desktop\CommonPassword.txt",) as f:
+    common_passwords = set(line.strip() for line in f)
+app.secret_key = '3f1c8e1b2d4f5a6b7c8d9e0f1a2b3c4d'  
+
+users = {}
+
+# Password complexity regex
+password_complexity_regex = re.compile(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$')
+
+# HTML templates as strings
+home_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home - Sports Hub</title>
+    <style>
+        body {
+            background-image: url('https://93a059b4b95a5d37802e-eed2bd097faa953233ba991a8e3883bf.ssl.cf1.rackcdn.com/Blue_Dance_Square_TWITTER.gif');
+            background-size: cover;
+            color: white; /* Change text color for better visibility */
+            font-family: Arial, sans-serif;
+        }
+        h1, h2, h3, h4 {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Add shadow for better readability */
+        }
+        table {
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for the table */
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Welcome to Sports Hub</h1>
+    <p>This is the home page for the sports website.</p>
+    <p>Current Date and Time: {{ current_time }}</p>
+    <h2>Navigation</h2>
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/resources">Resources</a></li>
+        <li><a href="/update_password">Update Password</a></li>
+        <li><a href="/logout">Logout</a></li>
+    </ul>
+    <h3>Popular Sports Teams</h3>
+    <h4>NFL</h4>
+    <img src="https://static.clubs.nfl.com/image/private/f_auto/ravens/ombezxav2hlwcvr8rsva" alt="NFL Baltimore Ravens" width="300">
+    
+    <h4>NBA</h4>
+    <img src="https://images2.alphacoders.com/136/thumb-1920-1366941.png" alt="NBA Boston Celtics" width="300">
+    
+    <h4>Soccer</h4>
+    <img src="https://aesthetic-posters.com/cdn/shop/collections/posters-real-madrid.png?v=1721773174&width=750" alt="Real Madrid" width="300">
+    
+    <h3>Table</h3>
+    <table border="1">
+        <tr>
+            <th>Sport</th>
+            <th>Popularity</th>
+            <th>Region</th>
+        </tr>
+        <tr>
+            <td>Soccer</td>
+            <td>High</td>
+            <td>Worldwide</td>
+        </tr>
+        <tr>
+            <td>Basketball</td>
+            <td>High</td>
+            <td>USA</td>
+        </tr>
+        <tr>
+            <td>Cricket</td>
+            <td>Medium</td>
+            <td>UK, India</td>
+        </tr>
+        <tr>
+            <td>Tennis</td>
+            <td>Medium</td>
+            <td>Worldwide</td>
+        </tr>
+    </table>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+about_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>About - Sports Hub</title>
+    <style>
+        body {
+            background-image: url('https://wallpapersok.com/images/hd/aesthetic-nba-michael-jordan-gbnuk7rrw6552gu0.jpg');
+            background-size: cover;
+            color: white; 
+            font-family: Arial, sans-serif;
+        }
+        h1, h2, h3 {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Add shadow for better readability */
+        }
+        
+        body {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>About Sports Hub</h1>
+    <p>Sports Hub is dedicated to bringing you the latest news and information about all sports.</p>
+    <p>Current Date and Time: {{ current_time }}</p>
+    <h2>Why Follow Sports?</h2>
+    <ol>
+        <li>Excitement and entertainment</li>
+        <li>Community and camaraderie</li>
+        <li>Inspiration and motivation</li>
+    </ol>
+    <h3>More Information</h3>
+    <p>Visit our <a href="/">Home</a> page for more details.</p>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+resources_template = """
+<!DOCTYPE html>
+<html>
+<head>
+ <title>Resources - Sports Hub</title>
+    <style>
+        body {
+            background-image: url('https://93a059b4b95a5d37802e-eed2bd097faa953233ba991a8e3883bf.ssl.cf1.rackcdn.com/Blue_Dance_Square_TWITTER.gif');
+            background-size: cover;
+            color: white; /* Change text color for better visibility */
+            font-family: Arial, sans-serif;
+        }
+        h1, h2, h3 {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Add shadow for better readability */
+        }
+        /* Optional: Add some padding to the body */
+        body {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sports Resources</h1>
+    <p> Here are some valuable resources for sports enthusiasts:</p>
+    <ul>
+        <li><a href="https://www.espn.com" target="_blank">ESPN</a></li>
+        <li><a href="https://www.si.com/" target="_blank">Sports Illustrated</a></li>
+        <li><a href="https://www.bleacherreport.com" target="_blank">Bleacher Report</a></li>
+    </ul>
+    <p>Current Date and Time: {{ current_time }}</p>
+    <h2>Navigation</h2>
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/resources">Resources</a></li>
+        <li><a href="/update_password">Update Password</a></li>
+        <li><a href="/logout">Logout</a></li>
+    </ul>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+register_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register - Sports Hub</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('style') }}">
+</head>
+<body>
+    <h1>Register</h1>
+    <form method="POST">
+        <label for="username">Username:</label>
+        <input type="text" name="username" required>
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" name="password" required>
+        <br>
+        <input type="submit" value="Register">
+    </form>
+    <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+ {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+login_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Sports Hub</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('style') }}">
+</head>
+<body>
+    <h1>Login</h1>
+    <form method="POST">
+        <label for="username">Username:</label>
+        <input type="text" name="username" required>
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" name="password" required>
+        <br>
+        <input type="submit" value="Login">
+    </form>
+    <p>Don't have an account? <a href="{{ url_for('register') }}">Register here</a></p>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+password_update_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Update Password - Sports Hub</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            color: #333;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Update Password</h1>
+    <form method="POST">
+        <label for="new_password">New Password:</label>
+        <input type="password" name="new_password" required>
+        <br>
+        <input type="submit" value="Update Password">
+    </form>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
+"""
+
+css_style = """
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+h1, h2, h3 {
+    color: #333;
+}
+
+form {
+    margin-bottom: 20px;
+}
+
+input[type="text"], input[type="password"] {
+    margin: 5px 0;
+    padding: 10px;
+    width: 200px;
+}
+
+input[type="submit"] {
+    padding: 10px 15px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+input[type="submit"]:hover {
+    background-color: #0056b3;
+}
+"""
+
+@app.route('/')
+def home():
+    if 'username' in session:
+        return render_template_string(home_template, current_time=datetime.now())
+    return redirect(url_for('login'))
+
+@app.route('/about')
+def about():
+    if 'username' in session:
+        return render_template_string(about_template, current_time=datetime.now())
+    return redirect(url_for('login'))
+
+@app.route('/resources')
+def resources():
+    if 'username' in session:
+        return render_template_string(resources_template, current_time=datetime.now())
+    return redirect(url_for('login'))
+
+@app.route('/update_password', methods=['GET', 'POST'])
+def update_password():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        new_password = request.form['new_password']
+
+        # Check password complexity
+        if not password_complexity_regex.match(new_password):
+            flash("Password must be at least 12 characters long and include an uppercase letter, lowercase letter, number, and special character.")
+            return redirect(url_for('update_password'))
+
+        # Check against common passwords
+        if new_password in common_passwords:
+            flash("Password is too common. Choose a stronger password.")
+            return redirect(url_for('update_password'))
+
+        # Update the user's password
+        username = session['username']
+        users[username] = new_password
+        flash("Password updated successfully!")
+        return redirect(url_for('home'))
+
+    return render_template_string(password_update_template)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        if username in users:
+            flash("Username already exists.")
+            return redirect(url_for('register'))
+
+        if not password_complexity_regex.match(password):
+            flash("Password must be at least 12 characters long and include an uppercase letter, lowercase letter, number, and special character.")
+            return redirect(url_for('register'))
+
+        if password in common_passwords:
+            flash("Password is too common . Choose a stronger password.")
+            return redirect(url_for('register'))
+
+        users[username] = password
+        flash("Registration successful! You can now log in.")
+        return redirect(url_for('login'))
+
+    return render_template_string(register_template)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        if username in users and users[username] == password:
+            session['username'] = username
+            flash("Login successful!")
+            return redirect(url_for('home'))
+
+        flash("Invalid username or password.")
+        return redirect(url_for('login'))
+
+    return render_template_string(login_template)
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    flash("You have been logged out.")
+    return redirect(url_for('login'))
+
+@app.route('/style.css')
+def style():
+    return css_style, 200, {'Content-Type': 'text/css'}
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    app.run(debug=True)
